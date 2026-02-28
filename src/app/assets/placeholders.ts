@@ -1,0 +1,13 @@
+/**
+ * Placeholder image URLs for local development.
+ * Figma prototype uses figma:asset protocol which only works in Figma Make.
+ * These placeholders allow the app to run locally.
+ */
+
+// Simple gray placeholder with text - robotic arm view
+export const roboticArmView =
+  'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAlIiBoZWlnaHQ9IjgwJSIgeD0iMTAlIiB5PSIxMCUiIGZpbGw9IiNlNWU3ZWIiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY3NjkwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiPlJvYm90aWMgQXJtIFZpZXc8L3RleHQ+PC9zdmc+';
+
+// Simple gray placeholder with text - hand camera view
+export const handCameraView =
+  'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAlIiBoZWlnaHQ9IjgwJSIgeD0iMTAlIiB5PSIxMCUiIGZpbGw9IiNlNWU3ZWIiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY3NjkwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiPkhhbmQgQ2FtZXJhIFZpZXc8L3RleHQ+PC9zdmc+';

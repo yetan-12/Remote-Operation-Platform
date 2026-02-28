@@ -1,0 +1,6 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pyzmq>=25.0.0
+pyserial>=3.5
+dynamixel-sdk>=3.0.0
+numpy>=1.20.0
