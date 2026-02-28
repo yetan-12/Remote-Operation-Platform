@@ -4,7 +4,14 @@ import { Button } from './ui/button';
 import type { User } from '../types';
 import type { UserRole } from '../types';
 import { useAccounts } from '../contexts/AccountsContext';
+import { appEventBus } from '../core/events/AppEventBus';
 import DateRangePicker from './DateRangePicker';
+
+const ROLE_LABELS: Record<'Admin' | 'Reviewer' | 'Collector', string> = {
+  Admin: '管理员',
+  Reviewer: '标注员',
+  Collector: '采集员',
+};
 
 interface UserManagementProps {
   user: User;
@@ -155,6 +162,12 @@ export default function UserManagement({ user, onLogout }: UserManagementProps) 
         name: fullName,
         roles,
       });
+      appEventBus.publish('USER_CREATED', {
+        createdBy: user.name || user.username,
+        newUsername: username,
+        newName: fullName,
+        roles: formData.roles.map((r) => ROLE_LABELS[r]),
+      });
       handleCloseModal();
     } else if (activeModal === 'edit' && selectedUser) {
       const roles: UserRole[] = formData.roles.map((r) => ROLE_UI_TO_API[r]);
@@ -163,6 +176,12 @@ export default function UserManagement({ user, onLogout }: UserManagementProps) 
         return;
       }
       updateAccount(selectedUser.username, { roles, name: formData.fullName.trim() });
+      appEventBus.publish('USER_ROLES_UPDATED', {
+        operator: user.name || user.username,
+        targetUsername: selectedUser.username,
+        targetName: formData.fullName.trim() || selectedUser.fullName,
+        newRoles: formData.roles.map((r) => ROLE_LABELS[r]),
+      });
       handleCloseModal();
     }
   };

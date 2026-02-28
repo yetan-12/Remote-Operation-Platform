@@ -1,6 +1,8 @@
 import { AccountsProvider } from './contexts/AccountsContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DevicesProvider } from './contexts/DevicesContext';
+import { ClipAssignmentsProvider } from './contexts/ClipAssignmentsContext';
+import { OperationLogProvider } from './contexts/OperationLogContext';
 import LoginPage from './components/LoginPage';
 import Header from './components/Header';
 import Router from './components/Router';
@@ -45,7 +47,11 @@ export default function App() {
     <AccountsProvider>
       <DevicesProvider>
         <AuthProvider>
-          <AppContent />
+          <ClipAssignmentsProvider>
+            <OperationLogProvider>
+              <AppContent />
+            </OperationLogProvider>
+          </ClipAssignmentsProvider>
         </AuthProvider>
       </DevicesProvider>
     </AccountsProvider>

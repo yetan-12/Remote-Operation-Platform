@@ -13,6 +13,9 @@ import {
 const TEST_API_BASE = import.meta.env.VITE_TEST_API_URL || 'http://localhost:8000';
 import DateRangePicker from './DateRangePicker';
 
+/** Pairing with connected device - temporarily disabled */
+const PAIRING_ENABLED = false;
+
 interface DeviceManagementProps {
   user: User;
   onLogout: () => void;
@@ -184,7 +187,7 @@ export default function DeviceManagement({ user, onLogout }: DeviceManagementPro
         category: formData.category,
         subType,
         name,
-        ...(formData.pairedConnection && { connection: formData.pairedConnection }),
+        ...(PAIRING_ENABLED && formData.pairedConnection && { connection: formData.pairedConnection }),
       });
       handleCloseModal();
     } else if (activeModal === 'edit' && selectedDevice) {
@@ -330,7 +333,7 @@ export default function DeviceManagement({ user, onLogout }: DeviceManagementPro
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">类型</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">子类型</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">设备名称</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">配对</th>
+                    {PAIRING_ENABLED && <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">配对</th>}
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">状态</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">添加时间</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">操作</th>
@@ -347,6 +350,7 @@ export default function DeviceManagement({ user, onLogout }: DeviceManagementPro
                           {subTypeDisplayName(device.category, device.subType)}
                         </td>
                         <td className="px-4 py-4 text-sm font-medium text-gray-900">{device.name}</td>
+                        {PAIRING_ENABLED && (
                         <td className="px-4 py-4 text-sm text-gray-600">
                           {device.connection ? (
                             <span className="inline-flex items-center gap-1 text-xs">
@@ -357,6 +361,7 @@ export default function DeviceManagement({ user, onLogout }: DeviceManagementPro
                             '—'
                           )}
                         </td>
+                        )}
                         <td className="px-4 py-4">
                           <span
                             className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${statusBadge.style}`}
@@ -527,6 +532,7 @@ export default function DeviceManagement({ user, onLogout }: DeviceManagementPro
                     />
                   </div>
 
+                  {PAIRING_ENABLED && (
                   <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
                     <p className="text-sm font-medium text-gray-700">与已连接设备配对（可选）</p>
                     <p className="text-xs text-gray-500">
@@ -593,6 +599,7 @@ export default function DeviceManagement({ user, onLogout }: DeviceManagementPro
                       </div>
                     )}
                   </div>
+                  )}
                 </>
               ) : null}
 
@@ -715,7 +722,7 @@ export default function DeviceManagement({ user, onLogout }: DeviceManagementPro
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  {selectedDevice.connection && (
+                  {PAIRING_ENABLED && selectedDevice.connection && (
                     <div className="text-sm text-gray-600">
                       <span className="font-medium text-gray-700">当前配对：</span>
                       {selectedDevice.connection.type} — {selectedDevice.connection.address}

@@ -1,221 +1,31 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Search, Download, ChevronDown, ChevronUp, Info, CheckCircle2, XCircle, AlertTriangle, X, FileText, Users, Database, Settings, Key, Power, Upload, Eye } from 'lucide-react';
 import { Button } from './ui/button';
-import type { User } from '../App';
+import type { User } from '../types';
 import DateRangePicker from './DateRangePicker';
+import { useOperationLogs, type OperationLogEntry } from '../contexts/OperationLogContext';
 
 interface OperationLogProps {
   user: User;
   onLogout: () => void;
 }
 
-interface LogEntry {
-  id: string;
-  timestamp: string;
-  username: string;
-  fullName: string;
-  role: 'Admin' | 'Reviewer' | 'Collector';
-  operationType: 'Login' | 'DataCollection' | 'DataReview' | 'DeviceManagement' | 'UserManagement' | 'SystemConfig' | 'Export';
-  description: string;
-  ipAddress: string;
-  status: 'Success' | 'Failed';
-  details?: string;
-}
-
 export default function OperationLog({ user, onLogout }: OperationLogProps) {
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+  const [selectedLog, setSelectedLog] = useState<OperationLogEntry | null>(null);
   const [exportRange, setExportRange] = useState<'all' | 'selected' | 'filtered'>('filtered');
+  const { logs, clearLogs } = useOperationLogs();
   
   // 日期筛选状态
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // 模拟操作日志数据
-  const logs: LogEntry[] = [
-    {
-      id: '1',
-      timestamp: '2025-12-19 15:47:23',
-      username: 'Zhang',
-      fullName: '张研究员',
-      role: 'Collector',
-      operationType: 'DataCollection',
-      description: '提交了新的Clips数据',
-      ipAddress: '192.168.1.105',
-      status: 'Success',
-      details: 'Session ID: SE-20251219-007，包含8条Clip数据',
-    },
-    {
-      id: '2',
-      timestamp: '2025-12-19 15:45:12',
-      username: 'Fan',
-      fullName: '范标注员',
-      role: 'Reviewer',
-      operationType: 'DataReview',
-      description: '标注通过了12条Clip数据',
-      ipAddress: '192.168.1.103',
-      status: 'Success',
-      details: '涉及Session: SE-20251219-005, SE-20251219-006',
-    },
-    {
-      id: '3',
-      timestamp: '2025-12-19 15:42:08',
-      username: 'Wang',
-      fullName: '王管理员',
-      role: 'Admin',
-      operationType: 'UserManagement',
-      description: '创建了新用户账号',
-      ipAddress: '192.168.1.100',
-      status: 'Success',
-      details: '用户名: Chen, 姓名: 陈技术员, 角色: 采集员',
-    },
-    {
-      id: '4',
-      timestamp: '2025-12-19 15:38:45',
-      username: 'Wang',
-      fullName: '王管理员',
-      role: 'Admin',
-      operationType: 'DeviceManagement',
-      description: '启用了设备 KINOVA-03',
-      ipAddress: '192.168.1.100',
-      status: 'Success',
-      details: '设备型号: Kinova Gen3, IP: 192.168.1.103',
-    },
-    {
-      id: '5',
-      timestamp: '2025-12-19 15:35:21',
-      username: 'Lyu',
-      fullName: '吕采集员',
-      role: 'Collector',
-      operationType: 'DataCollection',
-      description: '连接到设备 FRANKA-01',
-      ipAddress: '192.168.1.106',
-      status: 'Success',
-      details: '设备状态: 在线, 固件版本: v2.5',
-    },
-    {
-      id: '6',
-      timestamp: '2025-12-19 15:30:15',
-      username: 'Fan',
-      fullName: '范标注员',
-      role: 'Reviewer',
-      operationType: 'DataReview',
-      description: '标记了Clip数据为拒绝（需要重新采集）',
-      ipAddress: '192.168.1.103',
-      status: 'Success',
-      details: 'Clip ID: CL-20251219-018, CL-20251219-019, CL-20251219-020',
-    },
-    {
-      id: '7',
-      timestamp: '2025-12-19 15:25:42',
-      username: 'Wang',
-      fullName: '王管理员',
-      role: 'Admin',
-      operationType: 'Export',
-      description: '导出了数据报表',
-      ipAddress: '192.168.1.100',
-      status: 'Success',
-      details: '格式: PDF, 范围: 完整报表',
-    },
-    {
-      id: '8',
-      timestamp: '2025-12-19 15:20:18',
-      username: 'Zhang',
-      fullName: '张研究员',
-      role: 'Collector',
-      operationType: 'DataCollection',
-      description: '尝试连接设备失败',
-      ipAddress: '192.168.1.105',
-      status: 'Failed',
-      details: '设备: UR5-02, 错误: 连接超时',
-    },
-    {
-      id: '9',
-      timestamp: '2025-12-19 15:15:30',
-      username: 'Wang',
-      fullName: '王管理员',
-      role: 'Admin',
-      operationType: 'UserManagement',
-      description: '重置了用户密码',
-      ipAddress: '192.168.1.100',
-      status: 'Success',
-      details: '用户: Li (李标注员)',
-    },
-    {
-      id: '10',
-      timestamp: '2025-12-19 15:10:05',
-      username: 'Fan',
-      fullName: '范标注员',
-      role: 'Reviewer',
-      operationType: 'Login',
-      description: '用户登录系统',
-      ipAddress: '192.168.1.103',
-      status: 'Success',
-      details: '登录方式: 密码认证',
-    },
-    {
-      id: '11',
-      timestamp: '2025-12-19 15:05:42',
-      username: 'Lyu',
-      fullName: '吕采集员',
-      role: 'Collector',
-      operationType: 'DataCollection',
-      description: '提交了新的Clips数据',
-      ipAddress: '192.168.1.106',
-      status: 'Success',
-      details: 'Session ID: SE-20251219-006，包含15条Clip数据',
-    },
-    {
-      id: '12',
-      timestamp: '2025-12-19 15:00:28',
-      username: 'Wang',
-      fullName: '王管理员',
-      role: 'Admin',
-      operationType: 'SystemConfig',
-      description: '修改了系统配置',
-      ipAddress: '192.168.1.100',
-      status: 'Success',
-      details: '配置项: 数据存储路径',
-    },
-    {
-      id: '13',
-      timestamp: '2025-12-19 14:55:16',
-      username: 'Zhang',
-      fullName: '张研究员',
-      role: 'Collector',
-      operationType: 'Login',
-      description: '用户登录系统',
-      ipAddress: '192.168.1.105',
-      status: 'Success',
-      details: '登录方式: 密码认证',
-    },
-    {
-      id: '14',
-      timestamp: '2025-12-19 14:50:33',
-      username: 'Wang',
-      fullName: '王管理员',
-      role: 'Admin',
-      operationType: 'DeviceManagement',
-      description: '添加了新设备',
-      ipAddress: '192.168.1.100',
-      status: 'Success',
-      details: '设备: REALSENSE-02, 型号: Intel RealSense D435i, IP: 192.168.1.204',
-    },
-    {
-      id: '15',
-      timestamp: '2025-12-19 14:45:20',
-      username: 'Fan',
-      fullName: '范标注员',
-      role: 'Reviewer',
-      operationType: 'DataReview',
-      description: '标注通过了8条Clip数据',
-      ipAddress: '192.168.1.103',
-      status: 'Success',
-      details: '涉及Session: SE-20251219-004',
-    },
-  ];
+  const successRate = useMemo(() => {
+    if (logs.length === 0) return 0;
+    return Math.round((logs.filter((l) => l.status === 'Success').length / logs.length) * 100);
+  }, [logs]);
 
   const getOperationTypeBadge = (type: string) => {
     const styles = {
@@ -276,13 +86,22 @@ export default function OperationLog({ user, onLogout }: OperationLogProps) {
               <h1 className="text-2xl font-semibold text-gray-900 mb-1">操作日志</h1>
               <p className="text-sm text-gray-500">记录系统所有用户操作及活动轨迹</p>
             </div>
-            <Button 
-              onClick={() => setShowExportModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
-            >
-              <Download size={18} />
-              导出日志
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={clearLogs}
+                className="bg-white hover:bg-gray-50 text-gray-900 border border-gray-200 flex items-center gap-2"
+              >
+                <X size={18} />
+                清空日志
+              </Button>
+              <Button 
+                onClick={() => setShowExportModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+              >
+                <Download size={18} />
+                导出日志
+              </Button>
+            </div>
           </div>
 
           {/* 统计卡片 */}
@@ -304,7 +123,7 @@ export default function OperationLog({ user, onLogout }: OperationLogProps) {
                 {logs.filter(l => l.status === 'Success').length}
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                成功率 {Math.round((logs.filter(l => l.status === 'Success').length / logs.length) * 100)}%
+                成功率 {successRate}%
               </div>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-4">

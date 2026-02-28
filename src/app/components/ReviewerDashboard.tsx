@@ -4,6 +4,8 @@ import { Button } from './ui/button';
 import DatePicker from './DatePicker';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import { roboticArmView, handCameraView } from '../assets/placeholders';
+import { useAuth } from '../contexts/AuthContext';
+import { useClipAssignments } from '../contexts/ClipAssignmentsContext';
 
 interface SessionData {
   id: string;
@@ -38,6 +40,27 @@ export default function ReviewerDashboard() {
   const [duration, setDuration] = useState(150); // 总帧数
   
   const clipsScrollRef = useRef<HTMLDivElement>(null);
+
+  const { currentUser } = useAuth();
+  const { getClipsForUser, submitReview } = useClipAssignments();
+
+  // Clips assigned to current user only (no default data)
+  const assignedClips = currentUser ? getClipsForUser(currentUser.username) : [];
+  const clips: ClipData[] = assignedClips.map((c) => ({
+    id: c.id,
+    duration: c.duration,
+    description: c.description,
+  }));
+
+  // Auto-select first clip when clips load, or reset if current selection is no longer in list
+  const clipIds = clips.map((c) => c.id).join(',');
+  useEffect(() => {
+    if (clips.length === 0) {
+      setSelectedClip(null);
+    } else if (!selectedClip || !clips.some((c) => c.id === selectedClip)) {
+      setSelectedClip(clips[0].id);
+    }
+  }, [clipIds, clips.length, selectedClip]);
 
   // 横向滚动到选中的Clip（仅在折叠窗展开时）
   useEffect(() => {
@@ -82,31 +105,6 @@ export default function ReviewerDashboard() {
     const newTime = parseInt(e.target.value);
     setCurrentTime(newTime);
   };
-
-  // 模拟数据
-  // 使用新的ID格式：C + 月日 + 序号（C1225-01形式）
-  const allClips: ClipData[] = [
-    { id: 'C1225-01', duration: '00:42', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1225-02', duration: '00:35', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1225-03', duration: '00:51', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1225-04', duration: '00:38', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1225-05', duration: '00:45', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1225-06', duration: '00:39', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1225-07', duration: '00:44', description: '将夹住方形积木移至色��上方' },
-    { id: 'C1225-08', duration: '00:52', description: '将夹住方形积木移至���盘上方' },
-    { id: 'C1225-09', duration: '00:36', description: '将夹住方形积木至色盘上方' },
-    { id: 'C1225-10', duration: '00:48', description: '将夹住方形积木移至色盘' },
-    { id: 'C1224-01', duration: '00:41', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1224-02', duration: '00:47', description: '方形积木移至色盘上方' },
-    { id: 'C1224-03', duration: '00:43', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1224-04', duration: '00:50', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1224-05', duration: '00:37', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1223-01', duration: '00:46', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1223-02', duration: '00:40', description: '将夹住方形积木移至色盘上方' },
-    { id: 'C1223-03', duration: '00:49', description: '将夹住方形积木移至色盘方' },
-  ];
-
-  const clips: ClipData[] = allClips;
 
   // 为每个clip分配统一缩略图
   const clipThumbnails = [
@@ -153,17 +151,40 @@ export default function ReviewerDashboard() {
     }
   };
 
-  // 提交标注
-  const handleSubmitReview = () => {
-    // 验证���填项
+  // Submit review and stay on next clip (called by "提交并下一条")
+  const handleSubmitAndNext = () => {
     if (!dataValidity || !dataCompleteness) {
       alert('请完成数据有效性和数据完成度的标注');
       return;
     }
-    // 这里可以添加提交标注的逻辑
-    console.log('提交标注', { selectedClip, dataValidity, dataCompleteness, selectedErrorTags, reviewComment });
-    
-    // 提交成功重置状态并返回默认界面
+    if (!selectedClip || !currentUser) return;
+    const nextClipId = clips[currentClipIndex + 1]?.id ?? null;
+    submitReview(
+      selectedClip,
+      { dataValidity, dataCompleteness, errorTags: selectedErrorTags, reviewComment },
+      currentUser.username
+    );
+    setDataValidity(null);
+    setDataCompleteness(null);
+    setSelectedErrorTags([]);
+    setReviewComment('');
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setSelectedClip(nextClipId);
+  };
+
+  // Submit review and return to empty state (called by "提交并返回")
+  const handleSubmitReview = () => {
+    if (!dataValidity || !dataCompleteness) {
+      alert('请完成数据有效性和数据完成度的标注');
+      return;
+    }
+    if (!selectedClip || !currentUser) return;
+    submitReview(
+      selectedClip,
+      { dataValidity, dataCompleteness, errorTags: selectedErrorTags, reviewComment },
+      currentUser.username
+    );
     setSelectedClip(null);
     setDataValidity(null);
     setDataCompleteness(null);
@@ -173,9 +194,9 @@ export default function ReviewerDashboard() {
     setCurrentTime(0);
   };
 
-  // 判断是单臂还是双臂
-  const isSingleArm = selectedClip === 'C1225-01';
-  const isDualArm = selectedClip === 'C1225-02';
+  // 判断是单臂还是双臂（根据第一个clip或选中clip的id判断）
+  const isSingleArm = selectedClip === clips[0]?.id || selectedClip === 'C-TEST-01';
+  const isDualArm = selectedClip === clips[1]?.id || selectedClip === 'C-TEST-02';
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -198,9 +219,15 @@ export default function ReviewerDashboard() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-1 space-y-1 custom-scrollbar">
-              {clips.map((clip, index) => (
+              {clips.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+                  <Paperclip className="w-10 h-10 text-gray-300 mb-2" />
+                  <p className="text-xs text-gray-500">暂无分配的 Clip</p>
+                </div>
+              ) : clips.map((clip, index) => (
                 <div
                   key={clip.id}
+                  data-clip-id={clip.id}
                   onClick={() => setSelectedClip(clip.id)}
                   className={`cursor-pointer transition-all rounded p-1 shadow-sm ${
                     selectedClip === clip.id
@@ -279,8 +306,21 @@ export default function ReviewerDashboard() {
         {/* 可滚动内容区域 */}
         <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
           {/* Clip数据详情展示模块 */}
-          {!selectedClip ? (
-            // ======== 默认空状态提示 ========
+          {clips.length === 0 ? (
+            // ======== 无分配Clip时的空状态 ========
+            <div className="bg-white rounded-lg p-6 mb-4 h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Paperclip className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-sm font-medium text-gray-900 mb-2">暂无分配给你的 Clip</h3>
+                <p className="text-xs text-gray-500">
+                  请联系管理员在「数据管理」页面为你分配标注任务后，此处将显示可标注的 Clip 列表
+                </p>
+              </div>
+            </div>
+          ) : !selectedClip ? (
+            // ======== 有Clip但未选择时的提示 ========
             <div className="bg-white rounded-lg p-6 mb-4 h-full flex items-center justify-center">
               <div className="text-center">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -322,7 +362,7 @@ export default function ReviewerDashboard() {
                   isFirstClip={isFirstClip}
                   isLastClip={isLastClip}
                   handlePreviousClip={handlePreviousClip}
-                  handleNextClip={handleNextClip}
+                  handleSubmitAndNext={handleSubmitAndNext}
                   handleSubmitReview={handleSubmitReview}
                 />
               ) : isDualArm ? (
@@ -347,7 +387,7 @@ export default function ReviewerDashboard() {
                   isFirstClip={isFirstClip}
                   isLastClip={isLastClip}
                   handlePreviousClip={handlePreviousClip}
-                  handleNextClip={handleNextClip}
+                  handleSubmitAndNext={handleSubmitAndNext}
                   handleSubmitReview={handleSubmitReview}
                 />
               ) : (
@@ -372,7 +412,7 @@ export default function ReviewerDashboard() {
                   isFirstClip={isFirstClip}
                   isLastClip={isLastClip}
                   handlePreviousClip={handlePreviousClip}
-                  handleNextClip={handleNextClip}
+                  handleSubmitAndNext={handleSubmitAndNext}
                   handleSubmitReview={handleSubmitReview}
                 />
               )}
@@ -403,7 +443,7 @@ function ReviewActions({
   isFirstClip,
   isLastClip,
   handlePreviousClip,
-  handleNextClip,
+  handleSubmitAndNext,
   handleSubmitReview
 }: any) {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -722,7 +762,7 @@ function ReviewActions({
               alert('请完成数据有效性和动作完成度的标注');
               return;
             }
-            handleNextClip();
+            handleSubmitAndNext();
           }}
           disabled={isLastClip}
         >
@@ -761,7 +801,7 @@ function SingleArmReview(props: any) {
     isFirstClip,
     isLastClip,
     handlePreviousClip,
-    handleNextClip,
+    handleSubmitAndNext,
     handleSubmitReview
   } = props;
 
@@ -1029,11 +1069,11 @@ function SingleArmReview(props: any) {
           setSelectedErrorTags={setSelectedErrorTags}
           reviewComment={reviewComment}
           setReviewComment={setReviewComment}
-          isFirstClip={isFirstClip}
-          isLastClip={isLastClip}
-          handlePreviousClip={handlePreviousClip}
-          handleNextClip={handleNextClip}
-          handleSubmitReview={handleSubmitReview}
+    isFirstClip={isFirstClip}
+    isLastClip={isLastClip}
+    handlePreviousClip={handlePreviousClip}
+    handleSubmitAndNext={handleSubmitAndNext}
+    handleSubmitReview={handleSubmitReview}
         />
       </div>
 
@@ -1513,7 +1553,7 @@ function DualArmReview(props: any) {
     isFirstClip,
     isLastClip,
     handlePreviousClip,
-    handleNextClip,
+    handleSubmitAndNext,
     handleSubmitReview
   } = props;
 
@@ -1822,11 +1862,11 @@ function DualArmReview(props: any) {
           setSelectedErrorTags={setSelectedErrorTags}
           reviewComment={reviewComment}
           setReviewComment={setReviewComment}
-          isFirstClip={isFirstClip}
-          isLastClip={isLastClip}
-          handlePreviousClip={handlePreviousClip}
-          handleNextClip={handleNextClip}
-          handleSubmitReview={handleSubmitReview}
+    isFirstClip={isFirstClip}
+    isLastClip={isLastClip}
+    handlePreviousClip={handlePreviousClip}
+    handleSubmitAndNext={handleSubmitAndNext}
+    handleSubmitReview={handleSubmitReview}
         />
       </div>
 

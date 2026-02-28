@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Search, Download, ChevronDown, ChevronUp, LayoutList, LayoutGrid, X, Database, FileText, Settings, AlertCircle, Cpu, Gamepad, BarChart2, Play, Maximize2, Eye, Circle, ChevronRight, TrendingUp } from 'lucide-react';
 import { Button } from './ui/button';
-import type { User } from '../App';
+import type { User } from '../types';
 import DateRangePicker from './DateRangePicker';
 import { roboticArmView, handCameraView } from '../assets/placeholders';
+import { useClipAssignments, type ClipInfo } from '../contexts/ClipAssignmentsContext';
+import { useAccounts } from '../contexts/AccountsContext';
 
 interface AdminDashboardProps {
   user: User;
@@ -35,66 +37,19 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
   const [showClipRobotData, setShowClipRobotData] = useState(true);
   const [showClipControllerData, setShowClipControllerData] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  
 
+  const { clips, assignments, assignClip, getClipReview, disableClip } = useClipAssignments();
+  const { accounts } = useAccounts();
 
-  // Clip数据接口
-  interface ClipInfo {
-    id: string;
-    description: string;
-    time: string;
-    duration: string;
-    frames: number;
-    sessionId: string;
-    collector: string;
-    device: string;
-    status: 'Pending' | 'Assigned' | 'Finished' | 'Disabled';
-  }
-
-  // 获取所有Clips数据（聚合所有Session的Clips）
-  const getAllClips = (): ClipInfo[] => {
-    const allClips: ClipInfo[] = [];
-    
-    // Session 1: SE-20251217-003
-    const clips1 = [
-      { id: 'C1217-08', description: '将机械臂移到至指定的置0度', time: '2025-12-17 10:32', duration: '00:42', frames: 24, sessionId: 'SE-20251217-003', collector: '张研究员', device: 'FRANKA-01', status: 'Pending' as const },
-      { id: 'C1217-07', description: '将夹住方形积木移至色盘上方', time: '2025-12-17 10:28', duration: '00:35', frames: 21, sessionId: 'SE-20251217-003', collector: '张研究员', device: 'FRANKA-01', status: 'Pending' as const },
-      { id: 'C1217-06', description: '夹取摆放干磁吸组件并扫描片', time: '2025-12-17 10:25', duration: '00:51', frames: 30, sessionId: 'SE-20251217-003', collector: '张研究员', device: 'FRANKA-01', status: 'Pending' as const },
-      { id: 'C1217-05', description: '机械臂回到初始位置', time: '2025-12-17 10:20', duration: '00:28', frames: 17, sessionId: 'SE-20251217-003', collector: '张研究员', device: 'FRANKA-01', status: 'Pending' as const },
-      { id: 'C1217-04', description: '抓取蓝色方块放置到指定位置', time: '2025-12-17 10:15', duration: '00:45', frames: 27, sessionId: 'SE-20251217-003', collector: '张研究员', device: 'FRANKA-01', status: 'Pending' as const },
-    ];
-    
-    // Session 2: SE-20251216-058
-    const clips2 = [
-      { id: 'C1216-20', description: '复位机械臂到初始位置', time: '2025-12-16 16:20', duration: '00:38', frames: 23, sessionId: 'SE-20251216-058', collector: '王工程师', device: 'UR5-02', status: 'Assigned' as const },
-      { id: 'C1216-19', description: '拾取红色立方体并放置', time: '2025-12-16 16:15', duration: '00:52', frames: 31, sessionId: 'SE-20251216-058', collector: '王工程师', device: 'UR5-02', status: 'Assigned' as const },
-      { id: 'C1216-18', description: '调整夹爪角度进行抓取', time: '2025-12-16 16:10', duration: '00:41', frames: 25, sessionId: 'SE-20251216-058', collector: '王工程师', device: 'UR5-02', status: 'Assigned' as const },
-    ];
-    
-    // Session 3: SE-20251216-042
-    const clips3 = [
-      { id: 'C1216-35', description: '完成任务并复位', time: '2025-12-16 09:50', duration: '00:55', frames: 33, sessionId: 'SE-20251216-042', collector: '张研究员', device: 'FRANKA-01', status: 'Finished' as const },
-      { id: 'C1216-34', description: '放置最后一个部件', time: '2025-12-16 09:45', duration: '00:47', frames: 28, sessionId: 'SE-20251216-042', collector: '张研究员', device: 'FRANKA-01', status: 'Finished' as const },
-    ];
-    
-    // Session 4: SE-20251215-022
-    const clips4 = [
-      { id: 'C1215-45', description: '完成清理工作', time: '2025-12-15 14:35', duration: '00:45', frames: 27, sessionId: 'SE-20251215-022', collector: '王工程师', device: 'UR5-02', status: 'Disabled' as const },
-      { id: 'C1215-44', description: '测试夹爪功能', time: '2025-12-15 14:30', duration: '00:38', frames: 23, sessionId: 'SE-20251215-022', collector: '王工程师', device: 'UR5-02', status: 'Disabled' as const },
-    ];
-    
-    allClips.push(...clips1, ...clips2, ...clips3, ...clips4);
-    return allClips;
-  };
-
-  // 获取所有Clips
-  const clips = getAllClips();
+  // Reviewer users (操作员/标注员) for assignment
+  const reviewerAccounts = accounts.filter((a) => a.roles.includes('reviewer'));
 
   const getStatusBadge = (status: string) => {
     const styles = {
       Pending: 'bg-yellow-100 text-yellow-700',
       Assigned: 'bg-blue-100 text-blue-700',
       Finished: 'bg-green-100 text-green-700',
+      Invalid: 'bg-red-100 text-red-700',
       Disabled: 'bg-gray-100 text-gray-500',
     };
     return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-500';
@@ -104,7 +59,8 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
     const texts = {
       Pending: '待标注',
       Assigned: '已分配',
-      Finished: '标注完成',
+      Finished: '已完成',
+      Invalid: '无效数据',
       Disabled: '已禁用',
     };
     return texts[status as keyof typeof texts] || status;
@@ -244,7 +200,8 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                       <option>全部状态</option>
                       <option>待标注</option>
                       <option>已分配</option>
-                      <option>标注完成</option>
+                      <option>已完成</option>
+                      <option>无效数据</option>
                       <option>已禁用</option>
                     </select>
                   </div>
@@ -312,6 +269,7 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">时长</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">帧数</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">采集时间</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">分配给的标注员</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">状态</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">操作</th>
                   </tr>
@@ -326,6 +284,11 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                       <td className="px-3 py-2 text-xs text-gray-700">{clip.duration}</td>
                       <td className="px-3 py-2 text-xs text-gray-700">{clip.frames}</td>
                       <td className="px-3 py-2 text-xs text-gray-700">{clip.time}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700">
+                        {assignments[clip.id]
+                          ? (reviewerAccounts.find((a) => a.username === assignments[clip.id])?.name || assignments[clip.id])
+                          : '-'}
+                      </td>
                       <td className="px-3 py-2">
                         <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${getStatusBadge(clip.status)}`}>
                           {getStatusText(clip.status)}
@@ -352,7 +315,7 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
             {/* 分页 */}
             <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
               <div className="text-sm text-gray-600">
-                显示第 1 到 5 条，共 148 条记录
+                显示第 1 到 {clips.length} 条，共 {clips.length} 条记录
               </div>
               <div className="flex items-center gap-2">
                 <button className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">
@@ -507,7 +470,35 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                 <div className="text-xs text-gray-500 mb-1">Clip ID</div>
                 <div className="text-sm font-medium text-gray-900">{selectedClip.id}</div>
                 <div className="text-xs text-gray-500 mt-2">{selectedClip.description}</div>
+                <div className="mt-2">
+                  <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${getStatusBadge(selectedClip.status)}`}>
+                    {getStatusText(selectedClip.status)}
+                  </span>
+                </div>
               </div>
+
+              {/* 当状态为无效数据时，显示无效原因 */}
+              {selectedClip.status === 'Invalid' && (() => {
+                const review = getClipReview(selectedClip.id);
+                if (!review) return null;
+                const reasons: string[] = [];
+                if (review.errorTags?.length) reasons.push(...review.errorTags);
+                if (review.reviewComment?.trim()) reasons.push(review.reviewComment);
+                if (reasons.length === 0) reasons.push('标注员标记为无效');
+                return (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-red-800 mb-2">无效原因</div>
+                    <ul className="text-xs text-red-700 space-y-1 list-disc list-inside">
+                      {reasons.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                    {review.reviewedBy && (
+                      <div className="text-xs text-red-600 mt-2">标注员: {reviewerAccounts.find(a => a.username === review.reviewedBy)?.name || review.reviewedBy}</div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <p className="text-sm text-gray-600">请选择要执行的操作：</p>
 
@@ -588,44 +579,35 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                 </div>
               </div>
 
-              {/* 选择标注员 */}
+              {/* 选择标注员（仅显示具有 操作员/标注员 角色的用户） */}
               <div>
-                <label className="block text-sm text-gray-700 mb-2">选择标注员</label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input
-                      type="radio"
-                      name="reviewer"
-                      value="李标注员"
-                      checked={selectedReviewer === '李标注员'}
-                      onChange={(e) => setSelectedReviewer(e.target.value)}
-                      className="w-4 h-4 text-blue-600"
-                    />
-                    <span className="text-sm text-gray-900">李标注员</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input
-                      type="radio"
-                      name="reviewer"
-                      value="王标注员"
-                      checked={selectedReviewer === '王标注员'}
-                      onChange={(e) => setSelectedReviewer(e.target.value)}
-                      className="w-4 h-4 text-blue-600"
-                    />
-                    <span className="text-sm text-gray-900">王标注员</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input
-                      type="radio"
-                      name="reviewer"
-                      value="赵标注员"
-                      checked={selectedReviewer === '赵标注员'}
-                      onChange={(e) => setSelectedReviewer(e.target.value)}
-                      className="w-4 h-4 text-blue-600"
-                    />
-                    <span className="text-sm text-gray-900">赵标注员</span>
-                  </label>
-                </div>
+                <label className="block text-sm text-gray-700 mb-2">选择标注员（操作员）</label>
+                {reviewerAccounts.length === 0 ? (
+                  <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+                    暂无可分配的标注员，请先在账户与权限管理中创建具有「标注员」角色的用户
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {reviewerAccounts.map((acc) => (
+                      <label
+                        key={acc.username}
+                        className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50"
+                      >
+                        <input
+                          type="radio"
+                          name="reviewer"
+                          value={acc.username}
+                          checked={selectedReviewer === acc.username}
+                          onChange={(e) => setSelectedReviewer(e.target.value)}
+                          className="w-4 h-4 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-900">
+                          {acc.name || acc.username} ({acc.username})
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* 备注 */}
@@ -659,7 +641,12 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                     alert('请选择标注员');
                     return;
                   }
-                  alert(`已将Clip ${selectedClip.id} 分配给 ${selectedReviewer}${assignNote ? `\n备注：${assignNote}` : ''}`);
+                  const reviewerName = reviewerAccounts.find((a) => a.username === selectedReviewer)?.name || selectedReviewer;
+                  assignClip(selectedClip.id, selectedReviewer, {
+                    assignedBy: user.name || user.username,
+                    assigneeName: reviewerName,
+                  });
+                  alert(`已将Clip ${selectedClip.id} 分配给 ${reviewerName}${assignNote ? `\n备注：${assignNote}` : ''}`);
                   setShowClipManageModal(false);
                   setSelectedClip(null);
                   setClipManageAction(null);
@@ -738,7 +725,7 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
               </Button>
               <Button
                 onClick={() => {
-                  alert(`已禁用Clip: ${selectedClip.id}`);
+                  disableClip(selectedClip.id);
                   setShowClipManageModal(false);
                   setSelectedClip(null);
                   setClipManageAction(null);

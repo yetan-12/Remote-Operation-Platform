@@ -1,6 +1,6 @@
 import type { AccountConfig, UserRole, PageType } from '../types';
 
-// Default accounts: only Lyu, with admin / reviewer / collector roles, password empty
+// Default accounts: Lyu with admin/reviewer/collector roles
 export const DEFAULT_ACCOUNTS: AccountConfig[] = [
   { username: 'Lyu', password: '', name: '吕', roles: ['admin', 'reviewer', 'collector'] },
 ];
