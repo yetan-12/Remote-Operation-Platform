@@ -74,6 +74,7 @@ class ZMQTeleopStrategy(BaseTeleopStrategy):
         robot_host: str,
         robot_port: int,
         robot_usb_port: Optional[str],
+        robot_can_channel: Optional[str] = None,
         hz: float = 50,
     ) -> None:
         try:
@@ -130,6 +131,7 @@ class USBSharedBusTeleopStrategy(BaseTeleopStrategy):
         robot_host: str,
         robot_port: int,
         robot_usb_port: Optional[str],
+        robot_can_channel: Optional[str] = None,
         hz: float = 50,
     ) -> None:
         try:
@@ -242,6 +244,7 @@ class USBDualPortTeleopStrategy(BaseTeleopStrategy):
         robot_host: str,
         robot_port: int,
         robot_usb_port: Optional[str],
+        robot_can_channel: Optional[str] = None,
         hz: float = 50,
     ) -> None:
         try:
@@ -318,6 +321,75 @@ class USBDualPortTeleopStrategy(BaseTeleopStrategy):
         self._running = False
 
 
+class CANTeleopStrategy(BaseTeleopStrategy):
+    """Teleop via CAN: GELLO (USB) controls Piper robot (CAN bus)."""
+
+    def run(
+        self,
+        gello_port: str,
+        robot_host: str,
+        robot_port: int,
+        robot_usb_port: Optional[str],
+        robot_can_channel: Optional[str] = None,
+        hz: float = 50,
+    ) -> None:
+        try:
+            from lib.gello_agent import GelloAgent, GENERIC_GELLO_CONFIG
+            from lib.piper_robot import PiperRobot
+            import numpy as np
+        except ImportError as e:
+            self._update_state([], {}, f"lib 导入失败: {e}")
+            return
+
+        agent = None
+        robot = None
+        channel = robot_can_channel or "can_follower"
+
+        try:
+            agent = GelloAgent(port=gello_port, dynamixel_config=GENERIC_GELLO_CONFIG)
+            robot = PiperRobot(channel=channel)
+            self._update_state([], {}, None)
+        except Exception as e:
+            self._update_state([], {}, str(e))
+            return
+
+        self._running = True
+        self._event_bus.publish(Event(EventType.TELEOP_STARTED, {"mode": "can"}))
+        dt = 1.0 / hz
+
+        try:
+            while self._running and agent and robot:
+                try:
+                    action = agent.act({})
+                    if hasattr(action, "tolist"):
+                        action = np.array(action)
+                    robot.command_joint_state(action)
+                    obs = robot.get_observations()
+                    self._update_state(
+                        action.tolist() if hasattr(action, "tolist") else list(action),
+                        obs,
+                        None,
+                    )
+                except Exception as e:
+                    self._update_state(self._leader_joints, self._follower_obs, str(e))
+                time.sleep(dt)
+        finally:
+            try:
+                if robot:
+                    robot.close()
+            except Exception:
+                pass
+            try:
+                if agent and hasattr(agent, "_robot") and hasattr(agent._robot, "_driver"):
+                    agent._robot._driver.close()
+            except Exception:
+                pass
+            self._event_bus.publish(Event(EventType.TELEOP_STOPPED, {}))
+
+    def stop(self) -> None:
+        self._running = False
+
+
 class TeleopStrategyFactory:
     """Factory Pattern: create appropriate strategy from config."""
 
@@ -325,7 +397,11 @@ class TeleopStrategyFactory:
     def create(
         gello_port: str,
         robot_usb_port: Optional[str],
+        robot_can_channel: Optional[str] = None,
     ) -> BaseTeleopStrategy:
+        # Priority: CAN > USB > ZMQ
+        if robot_can_channel:
+            return CANTeleopStrategy()
         if not robot_usb_port:
             return ZMQTeleopStrategy()
         use_shared = robot_usb_port == gello_port or str(robot_usb_port).upper() == "SAME"

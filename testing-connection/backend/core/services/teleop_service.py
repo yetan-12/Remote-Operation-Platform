@@ -18,12 +18,14 @@ class StartTeleopCommand:
         robot_host: str = "127.0.0.1",
         robot_port: int = 6001,
         robot_usb_port: Optional[str] = None,
+        robot_can_channel: Optional[str] = None,
         event_bus: Optional[EventBus] = None,
     ):
         self._gello_port = gello_port
         self._robot_host = robot_host
         self._robot_port = robot_port
         self._robot_usb_port = robot_usb_port
+        self._robot_can_channel = robot_can_channel
         self._event_bus = event_bus or get_event_bus()
 
     def execute(self) -> Tuple[bool, Optional[str]]:
@@ -40,6 +42,15 @@ class StartTeleopCommand:
                 f"机械臂串口 '{self._robot_usb_port}' 不存在。当前可用: {', '.join(avail) or '无'}。"
                 "若 GELLO 与机械臂在同一总线，请将机械臂串口选为与 GELLO 相同以使用单口模式。"
             )
+        # CAN channel validation (optional)
+        if self._robot_can_channel:
+            try:
+                from lib.piper_robot import list_can_channels
+                can_channels = list_can_channels()
+                if self._robot_can_channel not in can_channels:
+                    return False, f"CAN 通道 '{self._robot_can_channel}' 不存在。可用: {', '.join(can_channels) or '无'}。"
+            except Exception as e:
+                return False, f"CAN 检测失败: {e}"
         return True, None
 
 
@@ -64,19 +75,20 @@ class TeleopService:
         robot_host: str = "127.0.0.1",
         robot_port: int = 6001,
         robot_usb_port: Optional[str] = None,
+        robot_can_channel: Optional[str] = None,
     ) -> Tuple[bool, Optional[str]]:
         """Start teleop. Returns (ok, error_message)."""
         if self.is_running:
             return False, "遥操作已在运行"
-        cmd = StartTeleopCommand(gello_port, robot_host, robot_port, robot_usb_port, self._event_bus)
+        cmd = StartTeleopCommand(gello_port, robot_host, robot_port, robot_usb_port, robot_can_channel, self._event_bus)
         ok, err = cmd.execute()
         if not ok:
             return False, err
-        strategy = TeleopStrategyFactory.create(gello_port, robot_usb_port)
+        strategy = TeleopStrategyFactory.create(gello_port, robot_usb_port, robot_can_channel)
         self._strategy = strategy
         self._thread = threading.Thread(
             target=strategy.run,
-            args=(gello_port, robot_host, robot_port, robot_usb_port),
+            args=(gello_port, robot_host, robot_port, robot_usb_port, robot_can_channel),
             kwargs={"hz": 50},
             daemon=True,
         )

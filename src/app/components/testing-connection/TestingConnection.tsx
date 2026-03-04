@@ -3,7 +3,7 @@
  * Extensible design for robot arms, GELLO, grippers, robot hands, etc.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Radio, Loader2, RefreshCw, Usb, Play, Square } from 'lucide-react';
+import { Radio, Loader2, RefreshCw, Usb, Play, Square, Cable } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import DeviceStatePanel from './DeviceStatePanel';
@@ -63,22 +63,21 @@ export default function TestingConnection() {
   const [gelloScannedIds, setGelloScannedIds] = useState<number[]>([]);
   const [gelloScanning, setGelloScanning] = useState(false);
 
-  // Robot USB (机械臂 USB) - same pattern as GELLO
-  const [robotUsbConnected, setRobotUsbConnected] = useState<boolean | null>(null);
-  const [robotUsbTesting, setRobotUsbTesting] = useState(false);
-  const [robotUsbError, setRobotUsbError] = useState('');
-  const [robotUsbPort, setRobotUsbPort] = useState('COM4');
-  const [robotUsbDetectedPorts, setRobotUsbDetectedPorts] = useState<string[]>([]);
-  const [robotUsbDetecting, setRobotUsbDetecting] = useState(false);
-  const [robotUsbBackendAvailable, setRobotUsbBackendAvailable] = useState<boolean | null>(null);
-  const [portDetailList, setPortDetailList] = useState<Array<{ port: string; description: string }>>([]);
-  const [showPortTroubleshoot, setShowPortTroubleshoot] = useState(false);
+  // Robot CAN (机械臂 CAN 总线)
+  const [robotCanConnected, setRobotCanConnected] = useState<boolean | null>(null);
+  const [robotCanTesting, setRobotCanTesting] = useState(false);
+  const [robotCanError, setRobotCanError] = useState('');
+  const [robotCanChannel, setRobotCanChannel] = useState('can_follower');
+  const [robotCanChannels, setRobotCanChannels] = useState<string[]>([]);
+  const [robotCanDetecting, setRobotCanDetecting] = useState(false);
+  const [robotCanJoints, setRobotCanJoints] = useState<number[]>([]);
+  const [robotCanStateLoading, setRobotCanStateLoading] = useState(false);
+  const [robotCanResetting, setRobotCanResetting] = useState(false);
 
   // Teleop: GELLO controls robot
   const [teleopRunning, setTeleopRunning] = useState(false);
   const [teleopStarting, setTeleopStarting] = useState(false);
-  const [teleopUseUsb, setTeleopUseUsb] = useState(true);
-  const [teleopSinglePortMode, setTeleopSinglePortMode] = useState(false);
+  const [teleopUseCan, setTeleopUseCan] = useState(true);
   const [teleopLeaderJoints, setTeleopLeaderJoints] = useState<number[]>([]);
   const [teleopFollowerObs, setTeleopFollowerObs] = useState<Record<string, unknown>>({});
   const [teleopError, setTeleopError] = useState('');
@@ -277,116 +276,125 @@ export default function TestingConnection() {
     }
   };
 
-  const detectRobotUsbPorts = async () => {
-    setRobotUsbDetecting(true);
-    setRobotUsbError('');
+  // CAN 通道检测
+  const detectCanChannels = async () => {
+    setRobotCanDetecting(true);
+    setRobotCanError('');
     try {
-      const portsRes = await fetch(`${API_BASE}/api/test/gello/ports`);
-      const portsData = await portsRes.json();
-      setRobotUsbBackendAvailable(true);
-      if (!portsData.ok || !Array.isArray(portsData.ports) || portsData.ports.length === 0) {
-        setRobotUsbDetectedPorts([]);
-        setRobotUsbError(portsData.error || '未检测到串口');
-        return;
-      }
-      const allPorts = portsData.ports as string[];
-      setRobotUsbDetectedPorts(allPorts);
-      const identifyRes = await fetch(`${API_BASE}/api/test/usb/identify`);
-      const identifyData = await identifyRes.json();
-      if (identifyData.ok && Array.isArray(identifyData.devices)) {
-        const robotDevices = identifyData.devices.filter((d: { is_gello: boolean }) => !d.is_gello);
-        if (robotDevices.length > 0) {
-          setRobotUsbPort(robotDevices[0].port);
-          setShowPortTroubleshoot(false);
+      const res = await fetch(`${API_BASE}/api/test/robot/can/channels`);
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.channels)) {
+        setRobotCanChannels(data.channels);
+        if (data.channels.length > 0) {
+          // 优先选择 can_follower
+          const follower = data.channels.find((c: string) => c.includes('follower'));
+          setRobotCanChannel(follower || data.channels[0]);
         } else {
-          const otherThanGello = allPorts.find((p) => p !== gelloPort);
-          setRobotUsbPort(otherThanGello ?? allPorts[0]);
-          setRobotUsbError(
-            allPorts.length > 1
-              ? '未能区分 GELLO/机械臂，已选非 GELLO 串口；若不对请手动选择'
-              : '仅检测到一个串口，请确认机械臂已连接'
-          );
+          setRobotCanError('未检测到 CAN 通道');
         }
       } else {
-        const otherThanGello = allPorts.find((p) => p !== gelloPort);
-        setRobotUsbPort(otherThanGello ?? allPorts[0]);
-        if (allPorts.length === 1) {
-          setRobotUsbError('仅检测到一个串口，请确认机械臂已连接');
-          setShowPortTroubleshoot(true);
-        }
+        setRobotCanChannels([]);
+        setRobotCanError(data.error || '检测 CAN 通道失败');
       }
-    } catch {
-      setRobotUsbBackendAvailable(false);
-      setRobotUsbDetectedPorts([]);
-      setRobotUsbError('无法连接后端，请先启动：cd testing-connection/backend && python main.py');
+    } catch (e) {
+      setRobotCanChannels([]);
+      setRobotCanError(e instanceof Error ? e.message : '请求失败，请确认测试后端已启动');
     } finally {
-      setRobotUsbDetecting(false);
+      setRobotCanDetecting(false);
     }
   };
 
-  const testRobotUsbBackend = async () => {
-    setRobotUsbTesting(true);
-    setRobotUsbError('');
-    setRobotUsbConnected(null);
+  // 测试 CAN 连接
+  const testRobotCan = async () => {
+    setRobotCanTesting(true);
+    setRobotCanError('');
+    setRobotCanConnected(null);
     try {
-      const res = await fetch(`${API_BASE}/api/test/robot/usb`, {
+      const res = await fetch(`${API_BASE}/api/test/robot/can`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port: robotUsbPort, baudrate: 115200 }),
+        body: JSON.stringify({ channel: robotCanChannel }),
       });
       const data = await res.json();
       if (data.ok) {
-        setRobotUsbConnected(true);
+        setRobotCanConnected(true);
+        // 获取初始状态
+        await fetchRobotCanState();
       } else {
-        setRobotUsbConnected(false);
-        setRobotUsbError(data.error || '连接失败');
+        setRobotCanConnected(false);
+        setRobotCanError(data.error || '连接失败');
       }
     } catch (e) {
-      setRobotUsbConnected(false);
-      setRobotUsbError(e instanceof Error ? e.message : '请求失败，请确认测试后端已启动');
+      setRobotCanConnected(false);
+      setRobotCanError(e instanceof Error ? e.message : '请求失败，请确认测试后端已启动');
     } finally {
-      setRobotUsbTesting(false);
+      setRobotCanTesting(false);
     }
   };
 
-  const testRobotUsbWebSerial = async () => {
-    const nav = navigator as typeof navigator & {
-      serial?: { requestPort: (options?: { filters?: unknown[] }) => Promise<{ open: (opts: { baudRate: number }) => Promise<void>; close: () => Promise<void> }> };
-    };
-    if (!nav.serial) {
-      setRobotUsbError('当前浏览器不支持 Web Serial，请使用 Chrome 或 Edge 打开本页');
-      setRobotUsbConnected(false);
-      return;
-    }
-    if (!window.isSecureContext) {
-      setRobotUsbError('Web Serial 仅支持安全上下文，请用 http://localhost 访问本页');
-      setRobotUsbConnected(false);
-      return;
-    }
-    setRobotUsbTesting(true);
-    setRobotUsbError('');
-    setRobotUsbConnected(null);
+  // 获取 CAN 机械臂状态
+  const fetchRobotCanState = async () => {
+    setRobotCanStateLoading(true);
     try {
-      const port = await nav.serial!.requestPort();
-      await port.open({ baudRate: 115200 });
-      await port.close();
-      setRobotUsbConnected(true);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setRobotUsbConnected(false);
-      if (msg.includes('No port selected') || msg.includes('No device selected') || msg.includes('cancel')) {
-        setRobotUsbError('未选择串口：请再次点击按钮，在弹窗中选中机械臂对应的 COM 口后点击「连接」，不要点取消。');
-      } else if (msg.includes('Access denied') || msg.includes('Permission')) {
-        setRobotUsbError('权限被拒绝。请确认在弹窗中选择了正确的 USB 设备。');
-      } else if (msg.includes('in use') || msg.includes('busy') || msg.includes('Error opening')) {
-        setRobotUsbError('串口被占用。请关闭占用机械臂的其他程序后再试。');
-      } else {
-        setRobotUsbError(`USB 连接失败: ${msg}`);
+      const res = await fetch(
+        `${API_BASE}/api/test/robot/can/state?channel=${encodeURIComponent(robotCanChannel)}`
+      );
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.joint_positions)) {
+        setRobotCanJoints(data.joint_positions);
       }
+    } catch {
+      // ignore
     } finally {
-      setRobotUsbTesting(false);
+      setRobotCanStateLoading(false);
     }
   };
+
+  // 机械臂复位（归零）
+  const resetRobotCan = async () => {
+    setRobotCanResetting(true);
+    setRobotCanError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/test/robot/can/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: robotCanChannel,
+          // 不传 home_position，使用后端默认的校准归零位置
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        // 复位后刷新状态 (等待2.5秒，因为复位需要2秒)
+        setTimeout(() => fetchRobotCanState(), 2500);
+      } else {
+        setRobotCanError(data.error || '复位失败');
+      }
+    } catch (e) {
+      setRobotCanError(e instanceof Error ? e.message : '复位请求失败');
+    } finally {
+      setRobotCanResetting(false);
+    }
+  };
+
+  // 实时轮询 CAN 机械臂状态
+  useEffect(() => {
+    if (robotCanConnected !== true || robotCanJoints.length === 0) return;
+    const t = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/test/robot/can/state?channel=${encodeURIComponent(robotCanChannel)}`
+        );
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.joint_positions)) {
+          setRobotCanJoints(data.joint_positions);
+        }
+      } catch {
+        // ignore
+      }
+    }, ROBOT_STATE_POLL_INTERVAL_MS);
+    return () => clearInterval(t);
+  }, [robotCanConnected, robotCanJoints.length, robotCanChannel]);
 
   const detectSerialPorts = async () => {
     setDetectingPorts(true);
@@ -436,8 +444,8 @@ export default function TestingConnection() {
         robot_host: robotHost,
         robot_port: robotPort,
       };
-      if (teleopUseUsb) {
-        body.robot_usb_port = teleopSinglePortMode ? gelloPort : robotUsbPort;
+      if (teleopUseCan) {
+        body.robot_can_channel = robotCanChannel;
       }
       const res = await fetch(`${API_BASE}/api/test/teleop/start`, {
         method: 'POST',
@@ -567,129 +575,110 @@ export default function TestingConnection() {
             </Button>
           </div>
 
-          {/* Robot USB - 机械臂 USB (same design as GELLO) */}
+          {/* Robot CAN - 机械臂 CAN 总线 (Piper) */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-3 flex items-center gap-2">
-              <Usb size={20} />
-              机械臂 (USB)
+              <Cable size={20} />
+              机械臂 (CAN)
             </h2>
-            <p className="text-xs text-gray-500 mb-3">USB 串口直连，默认 115200</p>
-            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
-              <strong>仅连机械臂</strong>：<strong>通过浏览器选择 USB 设备</strong> 不需要后端。<strong>通过后端测试</strong> 需先启动后端；可用 <code className="bg-amber-100 px-1">npm run dev:all</code> 一键启动前端+测试后端。
+            <p className="text-xs text-gray-500 mb-3">CAN 总线直连 (Piper 机械臂)</p>
+            <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2 mb-4">
+              <strong>CAN 连接</strong>：Piper 机械臂使用 CAN 总线通信。<strong>can_follower</strong> 为从臂（跟随 GELLO），<strong>can_master</strong> 为主臂。
             </div>
             <div className="space-y-2 mb-4">
-              <label className="block text-sm text-gray-700">串口（后端测试时使用）</label>
+              <label className="block text-sm text-gray-700">CAN 通道</label>
               <div className="flex gap-2 flex-wrap">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={detectRobotUsbPorts}
-                  disabled={robotUsbDetecting}
+                  onClick={detectCanChannels}
+                  disabled={robotCanDetecting}
                 >
-                  {robotUsbDetecting ? <Loader2 size={14} className="animate-spin" /> : '自动检测串口'}
+                  {robotCanDetecting ? <Loader2 size={14} className="animate-spin" /> : '检测 CAN 通道'}
                 </Button>
-                {robotUsbDetectedPorts.length > 0 && (
+                {robotCanChannels.length > 0 && (
                   <select
                     className="border rounded px-2 py-1.5 text-sm font-mono bg-white"
-                    value={robotUsbPort}
-                    onChange={(e) => setRobotUsbPort(e.target.value)}
+                    value={robotCanChannel}
+                    onChange={(e) => setRobotCanChannel(e.target.value)}
                   >
-                    {robotUsbDetectedPorts.map((p) => (
-                      <option key={p} value={p}>{p}</option>
+                    {robotCanChannels.map((c) => (
+                      <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 )}
                 <Input
-                  value={robotUsbPort}
-                  onChange={(e) => setRobotUsbPort(e.target.value)}
-                  placeholder="COM4 或 /dev/ttyUSB1"
+                  value={robotCanChannel}
+                  onChange={(e) => setRobotCanChannel(e.target.value)}
+                  placeholder="can_follower"
                   className="font-mono flex-1 min-w-[120px]"
                 />
               </div>
-              {robotUsbBackendAvailable === false && (
-                <p className="text-xs text-amber-600">未检测到后端，仅「通过浏览器选择 USB 设备」可用</p>
-              )}
             </div>
-            {robotUsbError && (
-              <>
-                <p className="text-sm text-red-600 mb-2 bg-red-50 px-2 py-1 rounded">{robotUsbError}</p>
-                {robotUsbError.includes('仅检测到一个串口') && (
-                  <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setShowPortTroubleshoot((v) => !v);
-                        if (!showPortTroubleshoot) {
-                          try {
-                            const r = await fetch(`${API_BASE}/api/test/usb/ports/detail`);
-                            const d = await r.json();
-                            if (d.ok && Array.isArray(d.devices)) {
-                              setPortDetailList(d.devices.map((x: { port: string; description?: string; hwid?: string }) => ({ port: x.port, description: (x.description || x.hwid || '').trim() || '(无描述)' })));
-                            }
-                          } catch { setPortDetailList([]); }
-                        }
-                      }}
-                      className="text-blue-600 hover:underline font-medium"
-                    >
-                      {showPortTroubleshoot ? '收起排查建议' : '查看排查建议'}
-                    </button>
-                    {showPortTroubleshoot && (
-                      <div className="mt-2 text-gray-700 space-y-2">
-                        <p><strong>当前检测到的串口：</strong></p>
-                        {portDetailList.length > 0 ? (
-                          <ul className="list-disc pl-5">
-                            {portDetailList.map((d) => (
-                              <li key={d.port} className="font-mono">{d.port} — {d.description || '(无描述)'}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-gray-500">加载中…</p>
-                        )}
-                        <p><strong>若机械臂未出现为 COM 口，可能原因：</strong></p>
-                        <ul className="list-disc pl-5 space-y-1">
-                          <li>机械臂需安装 USB 转串口驱动（如 FTDI、CH340、CP210x），请至设备管理器查看是否有黄色感叹号</li>
-                          <li>部分机械臂（如 xArm）使用网线连接，不走 USB 串口</li>
-                          <li>尝试更换 USB 口或线缆，或使用独立 USB 口（避免与 GELLO 共用一个 Hub）</li>
-                          <li>在设备管理器中查看「端口(COM 和 LPT)」下是否有两个 COM 口</li>
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
+            {robotCanError && (
+              <p className="text-sm text-red-600 mb-2 bg-red-50 px-2 py-1 rounded">{robotCanError}</p>
             )}
-            {robotUsbConnected === true && (
-              <p className="text-sm text-green-700 mb-2">机械臂 USB 已连接</p>
+            {robotCanConnected === true && (
+              <p className="text-sm text-green-700 mb-2">机械臂 CAN 已连接</p>
             )}
             <div className="flex flex-col gap-2">
               <Button
-                onClick={testRobotUsbBackend}
-                disabled={robotUsbTesting}
-                variant="outline"
-                className="w-full"
+                onClick={testRobotCan}
+                disabled={robotCanTesting}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               >
-                {robotUsbTesting ? (
+                {robotCanTesting ? (
                   <Loader2 size={18} className="animate-spin mx-auto" />
                 ) : (
-                  <>通过后端测试 (指定串口)</>
+                  <>
+                    <RefreshCw size={18} className="mr-2" />
+                    测试 CAN 连接
+                  </>
                 )}
               </Button>
-              {hasWebSerial && (
-                <>
-                  <p className="text-xs text-gray-500 -mt-1">弹窗出现后请选择机械臂的 COM 口并点「连接」，不要取消</p>
-                  <Button
-                    onClick={testRobotUsbWebSerial}
-                    disabled={robotUsbTesting}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    通过浏览器选择 USB 设备（仅连接机械臂）
-                  </Button>
-                </>
+              {robotCanConnected === true && (
+                <Button
+                  onClick={fetchRobotCanState}
+                  disabled={robotCanStateLoading}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {robotCanStateLoading ? <Loader2 size={14} className="animate-spin" /> : '刷新关节状态'}
+                </Button>
+              )}
+              {robotCanConnected === true && (
+                <Button
+                  onClick={resetRobotCan}
+                  disabled={robotCanResetting}
+                  variant="outline"
+                  className="w-full bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-700"
+                >
+                  {robotCanResetting ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <>一键复位 (归零)</>
+                  )}
+                </Button>
               )}
             </div>
+            {robotCanJoints.length > 0 && (
+              <div className="mt-4 p-3 bg-gray-50 rounded border">
+                <p className="text-sm font-medium text-gray-700 mb-2">关节位置 (弧度)</p>
+                <div className="font-mono text-sm space-y-1">
+                  {robotCanJoints.map((v, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span>{i < robotCanJoints.length - 1 ? `关节${i + 1}` : '夹爪'}</span>
+                      <span>{v.toFixed(4)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+        </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* GELLO test */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-3 flex items-center gap-2">
@@ -860,42 +849,38 @@ export default function TestingConnection() {
         {/* GELLO 控制机械臂 (Teleop) */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
           <h2 className="text-lg font-medium text-gray-900 mb-2 flex items-center gap-2">
-            <Usb size={20} />
+            <Cable size={20} />
             GELLO 控制机械臂
           </h2>
           <p className="text-sm text-gray-500 mb-4">
-            使用 GELLO 控制器作为主手 (leader)，机械臂作为从手 (follower)。机械臂自由度需与 GELLO 一致（通常 7：6 关节 + 夹爪）。
+            使用 GELLO 控制器作为主手 (leader)，Piper 机械臂作为从手 (follower)。通过 CAN 总线控制机械臂。
           </p>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
-                type="checkbox"
-                checked={teleopUseUsb}
-                onChange={(e) => setTeleopUseUsb(e.target.checked)}
+                type="radio"
+                name="teleopMode"
+                checked={teleopUseCan}
+                onChange={() => { setTeleopUseCan(true); }}
                 className="rounded"
               />
-              <span className="text-sm font-medium">使用机械臂 USB 直连（绕过 ZMQ）</span>
+              <span className="text-sm font-medium">CAN 总线 (Piper)</span>
             </label>
-            {teleopUseUsb && (
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={teleopSinglePortMode}
-                  onChange={(e) => setTeleopSinglePortMode(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-sm font-medium">单口模式（GELLO 与机械臂在同一 Dynamixel 总线）</span>
-              </label>
-            )}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="teleopMode"
+                checked={!teleopUseCan}
+                onChange={() => { setTeleopUseCan(false); }}
+                className="rounded"
+              />
+              <span className="text-sm font-medium">ZMQ 模式</span>
+            </label>
           </div>
-          {teleopUseUsb ? (
-            <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2 mb-4">
-              <strong>USB 直连模式</strong>：GELLO 和机械臂均通过 USB 连接，无需 quick_run。机械臂需为 Dynamixel 舵机（与 GELLO 同协议）。
-              {teleopSinglePortMode ? (
-                <> <strong>单口模式</strong>：GELLO 与机械臂共享同一串口（如 COM3），使用上方 GELLO 的串口即可，无需单独检测机械臂 COM。</>
-              ) : (
-                <> 使用上方「机械臂 USB」检测到的串口；若机械臂未出现 COM 口，可勾选「单口模式」尝试共享 GELLO 串口。</>
-              )}
+          {teleopUseCan ? (
+            <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2 mb-4">
+              <strong>CAN 模式</strong>：使用 CAN 总线控制 Piper 机械臂。当前通道：<code className="bg-green-100 px-1 rounded">{robotCanChannel}</code>
+              {robotCanConnected !== true && <span className="text-amber-600 ml-2">（请先在上方测试 CAN 连接）</span>}
             </div>
           ) : (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
@@ -916,10 +901,14 @@ export default function TestingConnection() {
               disabled={
                 teleopStarting ||
                 teleopRunning ||
-                (teleopUseUsb && !teleopSinglePortMode && !robotUsbPort)
+                (teleopUseCan && !robotCanChannel)
               }
               className="bg-green-600 hover:bg-green-700 text-white"
-              title={teleopUseUsb && !teleopSinglePortMode && !robotUsbPort ? '请先在「机械臂 USB」中检测并选择串口，或勾选「单口模式」' : undefined}
+              title={
+                teleopUseCan && !robotCanChannel
+                  ? '请先检测 CAN 通道'
+                  : undefined
+              }
             >
               {teleopStarting ? <Loader2 size={18} className="animate-spin mr-2" /> : <Play size={18} className="mr-2" />}
               启动 GELLO 控制

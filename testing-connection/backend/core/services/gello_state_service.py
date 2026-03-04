@@ -2,6 +2,7 @@
 Gello State Service: read joint positions from GELLO (Dynamixel).
 Decoupled from API; used for /api/test/gello/state and /api/test/gello/scan.
 """
+from typing import Optional, Tuple
 
 
 def _read_single_servo_p2(port_handler, packet_handler, dxl_id: int, addr: int = 132):
@@ -116,7 +117,7 @@ def scan_gello_ids(port: str, baudrate: int = 57600) -> dict:
         return {"ok": False, "ids": [], "error": str(e)}
 
 
-def parse_ids_param(ids: str) -> tuple | None:
+def parse_ids_param(ids: str) -> Optional[Tuple[int, ...]]:
     """Parse ids query: '1-7' -> (1,2,...,7), 'auto' -> None."""
     if not ids or str(ids).strip().lower() == "auto":
         return None

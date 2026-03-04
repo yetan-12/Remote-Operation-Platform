@@ -35,12 +35,12 @@ class DynamixelRobotConfig:
         )
 
 
-# Generic config for unknown ports (COM3, COM4, etc.)
+# Calibrated config from gello_software/configs/yam_auto_generated.yaml
 GENERIC_GELLO_CONFIG = DynamixelRobotConfig(
     joint_ids=(1, 2, 3, 4, 5, 6),
-    joint_offsets=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-    joint_signs=(1, 1, 1, 1, 1, 1),
-    gripper_config=(7, 0, 90),
+    joint_offsets=(3.14159, 4.71239, 3.14159, 1.5708, 3.14159, 3.14159),
+    joint_signs=(1, -1, -1, -1, 1, 1),
+    gripper_config=(7, 142.82421875, 202.32421875),
 )
 
 

@@ -50,11 +50,16 @@ class RobotUsbTestRequest(BaseModel):
     baudrate: int = 115200
 
 
+class RobotCanTestRequest(BaseModel):
+    channel: str = "can_follower"
+
+
 class TeleopStartRequest(BaseModel):
     gello_port: str
     robot_host: str = "127.0.0.1"
     robot_port: int = 6001
     robot_usb_port: Optional[str] = None
+    robot_can_channel: Optional[str] = None
 
 
 # --- API: Robot ---
@@ -82,6 +87,61 @@ def test_robot_usb(req: RobotUsbTestRequest):
         s = serial.Serial(port=req.port, baudrate=req.baudrate, timeout=0.5)
         s.close()
         return {"ok": True, "port": req.port}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# --- API: Robot CAN (Piper) ---
+@app.get("/api/test/robot/can/channels")
+def list_can_channels():
+    """List available CAN channels for Piper robot."""
+    try:
+        from lib.piper_robot import list_can_channels
+        channels = list_can_channels()
+        return {"ok": True, "channels": channels}
+    except Exception as e:
+        return {"ok": False, "channels": [], "error": str(e)}
+
+
+@app.post("/api/test/robot/can")
+def test_robot_can(req: RobotCanTestRequest):
+    """Test Piper robot CAN connection."""
+    try:
+        from lib.piper_robot import test_piper_connection
+        return test_piper_connection(req.channel)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/test/robot/can/state")
+def get_robot_can_state(channel: str = "can_follower"):
+    """Get Piper robot state via CAN (fast read, no enable)."""
+    try:
+        from lib.piper_robot import get_piper_robot
+        robot = get_piper_robot(channel=channel, enable=False)  # No enable for fast read
+        obs = robot.get_observations()
+        return {"ok": True, **obs}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class RobotResetRequest(BaseModel):
+    channel: str = "can_follower"
+    home_position: Optional[list] = None  # 7 joints: [j1, j2, j3, j4, j5, j6, gripper(0-1)]
+
+
+@app.post("/api/test/robot/can/reset")
+def reset_robot_can(req: RobotResetRequest):
+    """Reset Piper robot to home position (no enable required)."""
+    try:
+        from lib.piper_robot import get_piper_robot
+        import numpy as np
+        robot = get_piper_robot(channel=req.channel, enable=False)  # Skip enable
+        if req.home_position is not None:
+            robot.go_home(np.array(req.home_position), skip_enable=True)
+        else:
+            robot.go_home(skip_enable=True)
+        return {"ok": True, "message": "机械臂已复位"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -133,6 +193,7 @@ def api_teleop_start(req: TeleopStartRequest):
         req.robot_host,
         req.robot_port,
         req.robot_usb_port,
+        req.robot_can_channel,
     )
     if not ok:
         raise HTTPException(status_code=400, detail=err or "启动失败")
